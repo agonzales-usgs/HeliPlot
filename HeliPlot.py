@@ -99,43 +99,58 @@ class HeliPlot(object):
 		time.sleep(1)	
 		parent.kill()	# kill pool (parent)
 
-	def cwbQuery(self, station):
+	def cwbQuery(self, station): 
 		# ------------------------------------------------
 		# Pull specific station seed file using CWBQuery
 		# ------------------------------------------------
-		try:
-			# -----------------------------------------------------------	
-			# Print CWBQuery() contents	
-			#print "java -jar " + self.cwbquery + " -s " + '"'+station+'"' + " -b " + '"'+self.datetimeQuery+'"' + " -d " + '"'+str(self.duration)+'"' + " -t dcc512 -o " + self.seedpath+"%N_%y_%j -h " + '"'+self.ipaddress+'"'	
-			# -----------------------------------------------------------	
+		for attempt in range(self.cwbattempts):
+			try:
+				# -----------------------------------------------------------	
+				# Print CWBQuery() contents	
+				#print "java -jar " + self.cwbquery +\
+				#	" -s " + '"'+station+'"' + " -b " + '"'+self.datetimeQuery+'"' +\
+				#	" -d " + '"'+str(self.duration)+'"' + " -t dcc512 -o " +\
+				#	self.seedpath+"%N_%y_%j -h " + '"'+self.ipaddress+'"'	
+				# -----------------------------------------------------------	
 			
-			# subprocess.Popen() needs to have a logger to track
-			# child process hangs (zombies). Also need to introduce
-			# a block that will kill all child processes if there
-			# is an error exception. All errors/warnings/info should
-			# be logged
-			proc = subprocess.Popen(["java -jar " + self.cwbquery + " -s " + '"'+station+'"' + " -b " + '"'+self.datetimeQuery+'"' + " -d " + '"'+str(self.duration)+'"' + " -t dcc512 -o " + self.seedpath+"%N_%y_%j -h " + '"'+self.ipaddress+'"'], stdout=subprocess.PIPE, stderr=subprocess.PIPE, preexec_fn=os.setsid, shell=True)
-			(out, err) = proc.communicate(timeout=10)	# waits for child proc 
-			print proc.pid	
-			print out 
-			print err 	
-			sys.stdout.flush()
-			sys.stderr.flush()
-		except subprocess.TimeoutExpired:
-			print "TimeoutExpired (cwbQuery() subprocess): terminate cwbQuery() workers"	
-			self.killSubprocess(proc, signal.SIGKILL)	
-			raise TimeoutExpiredError()
-			return	# returns to cwbQuery pool	
-		except KeyboardInterrupt:
-			print "KeyboardInterrupt (cwbQuery() subprocess): terminate cwbQuery() workers"	
-			self.killSubprocess(proc, signal.SIGKILL)	
-			raise KeyboardInterruptError()	
-			return	
-		except Exception as e:
-			print "*****Exception (cwbQuery() subprocess): " + str(e)
-			self.killSubprocess(proc, signal.SIGKILL)	
-			return	
-		
+				# subprocess.Popen() needs to have a logger to track
+				# child process hangs (zombies). Also need to introduce
+				# a block that will kill all child processes if there
+				# is an error exception. All errors/warnings/info should
+				# be logged
+				proc = subprocess.Popen(["java -jar " + self.cwbquery +\
+					" -s " + '"'+station+'"' + " -b " + '"'+self.datetimeQuery+'"' +\
+					" -d " + '"'+str(self.duration)+'"' + " -t dcc512 -o " +\
+					self.seedpath+"%N_%y_%j -h " + '"'+self.ipaddress+'"'],\
+					stdout=subprocess.PIPE, stderr=subprocess.PIPE,\
+					preexec_fn=os.setsid, shell=True)
+				(out, err) = proc.communicate(timeout=self.cwbtimeout)	# waits for child proc 
+				print proc.pid	
+				print out 
+				print err 	
+				sys.stdout.flush()
+				sys.stderr.flush()
+			except subprocess.TimeoutExpired:
+				print "TimeoutExpired Warning (cwbQuery() subprocess): retrying (attempt %d)..." % attempt
+				time.sleep(self.cwbsleep)
+
+				if attempt == (self.cwbattempts-1):
+					print "TimeoutExpired (cwbQuery() subprocess): terminate cwbQuery() workers"	
+					self.killSubprocess(proc, signal.SIGKILL)	
+					raise TimeoutExpiredError()
+					return	# returns to cwbQuery pool	
+			except KeyboardInterrupt:
+				print "KeyboardInterrupt (cwbQuery() subprocess): terminate cwbQuery() workers"	
+				self.killSubprocess(proc, signal.SIGKILL)	
+				raise KeyboardInterruptError()	
+				return	
+			except Exception as e:
+				print "*****Exception (cwbQuery() subprocess): " + str(e)
+				self.killSubprocess(proc, signal.SIGKILL)	
+				return	
+			else:
+				break
+	
 	def parallelcwbQuery(self):
 		# --------------------------------------------------
 		# Initialize all variables needed to run cwbQuery()
@@ -153,6 +168,9 @@ class HeliPlot(object):
 		# -----------------------------------------------
 		PROCESSES = multiprocessing.cpu_count()
 		print "PROCESSES = " + str(PROCESSES)
+		print "cwbtimeout = " + str(self.cwbtimeout)
+		print "cwbattempts = " + str(self.cwbattempts)
+		print "cwbsleep = " + str(self.cwbsleep)	
 		pool = multiprocessing.Pool(PROCESSES)
 		try:
 			poolpid = os.getpid()	
@@ -608,10 +626,12 @@ class HeliPlot(object):
 		print "Creating Thumbnails from OutputPlots...\n"	
 		# clear thumbnails directory 
 		os.chdir(self.thumbpath)	# cd into Thumbnails directory	
+		'''
 		thmfiles = glob.glob(self.thumbpath+"*")
 		for f in thmfiles:
 			os.remove(f)	# rm temp thumbnail files from Thumbnails dir
-	
+		'''
+		
 		# read from outputplots directory
 		imgfiles = glob.glob(self.plotspath+"*")
 		for f in imgfiles:
@@ -663,6 +683,12 @@ class HeliPlot(object):
 						self.imgformat = str(newline[0].strip())
 					elif "vertical" in newline[1]:
 						self.vertrange = float(newline[0].strip())
+					elif "cwbquery timeout" in newline[1]:
+						self.cwbtimeout = int(newline[0].strip())
+					elif "cwbquery attempts" in newline[1]:
+						self.cwbattempts = int(newline[0].strip())
+					elif "cwbquery sleep" in newline[1]:
+						self.cwbsleep = int(newline[0].strip())
 					elif "seed" in newline[1]:
 						self.seedpath = str(newline[0].strip())
 					elif "plots" in newline[1]:
