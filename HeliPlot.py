@@ -36,7 +36,10 @@ import functools
 import multiprocessing
 import warnings, glob, re, os, sys, string, subprocess
 from datetime import datetime, timedelta
-import signal, logging, psutil, time
+import signal
+import logging
+import psutil
+import time
 #from matplotlib.pyplot import title, figure, savefig
 
 
@@ -61,6 +64,7 @@ def unwrap_self_plotVelocity(args, **kwargs):
 # streams are then filtered and plotted using ObsPy
 # ---------------------------------------------------------
 class HeliPlot(object):
+	def 	
 	def killSubprocess(self, proc, signum):
 		# -----------------------------
 		# Kills pool subprocess child
@@ -70,13 +74,12 @@ class HeliPlot(object):
 		# -----------------------------
 		print "Killing child %6s" % proc.pid	
 		time.sleep(1)	
-		# Add conditional statement deciphering
-		# timeout errors from keyboard interrupts
+		# Send kill signal to child (terminate/kill)
+		proc.terminate()	# stop child process
+		proc.kill()		# send kill to child	
+		proc.send_signal(signum)	# kill child (just in case)	
 		(out, err) = proc.communicate()
-		print out
-		print err
-		sys.stdout.flush()
-		sys.stderr.flush()
+		raise subprocess.TimeoutExpired(proc.args, output=out)	
 
 	def killPool(self, pool, pid, name):
 		# ------------------------------
@@ -118,11 +121,11 @@ class HeliPlot(object):
 				# a block that will kill all child processes if there
 				# is an error exception. All errors/warnings/info should
 				# be logged
-				proc = subprocess.Popen(["java -jar " + self.cwbquery +\
-					" -s " + '"'+station+'"' + " -b " + '"'+self.datetimeQuery+'"' +\
-					" -d " + '"'+str(self.duration)+'"' + " -t dcc512 -o " +\
-					self.seedpath+"%N_%y_%j -h " + '"'+self.ipaddress+'"'],\
-					stdout=subprocess.PIPE, stderr=subprocess.PIPE,\
+				proc = subprocess.Popen([("java -jar " + self.cwbquery +
+					" -s " + '"'+station+'"' + " -b " + '"'+self.datetimeQuery+'"' +
+					" -d " + '"'+str(self.duration)+'"' + " -t dcc512 -o " +
+					self.seedpath+"%N_%y_%j -h " + '"'+self.ipaddress+'"')],
+					stdout=subprocess.PIPE, stderr=subprocess.PIPE,
 					preexec_fn=os.setsid, shell=True)
 				(out, err) = proc.communicate(timeout=self.cwbtimeout)	# waits for child proc 
 				print proc.pid	
@@ -137,7 +140,9 @@ class HeliPlot(object):
 				if attempt == (self.cwbattempts-1):
 					print "TimeoutExpired (cwbQuery() subprocess): terminate cwbQuery() workers"	
 					self.killSubprocess(proc, signal.SIGKILL)	
-					raise TimeoutExpiredError()
+					sys.stdout.flush()
+					sys.stdout.flush()
+					#raise TimeoutExpiredError()
 					return	# returns to cwbQuery pool	
 			except KeyboardInterrupt:
 				print "KeyboardInterrupt (cwbQuery() subprocess): terminate cwbQuery() workers"	
@@ -545,7 +550,6 @@ class HeliPlot(object):
 				show_y_UTC_label=False, size=(self.resx,self.resy),\
 				dpi=self.pix, title_size=-1)
 		
-			
 			# Set title, x/y labels and tick marks	
 			plt.title(stream[0].getId() + "  " + "Start: " +\
 				str(titlestartTime), fontsize=12) 
